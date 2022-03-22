@@ -13,10 +13,13 @@ add_library(
   register_udf.cpp
   gpt2_bpe_tokenizer.h
   gpt2_bpe_tokenizer.cpp
+  regex.h
+  regex.cpp
 )
 
 target_link_libraries(
   torcharrow_udfs
   velox_functions_string
   velox_functions_prestosql
+  "${TORCH_LIBRARIES}"
 )
