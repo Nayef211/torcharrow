@@ -27,14 +27,7 @@ struct bpe_tokenize {
     const arg_type<std::shared_ptr<GPT2BPEEncoder>>& bpe_encoder, 
     const arg_type<velox::Varchar>& text
   ) {
-//   template <typename TOutput, typename TBPEEncoderInput, typename TTextInput>
-//   FOLLY_ALWAYS_INLINE bool call(
-//     TOutput& result, 
-//     const TBPEEncoderInput& bpe_encoder, 
-//     const TTextInput& text
-//   ) {
-        // std::vector<int64_t> encoder_output = bpe_encoder->Encode(text.str());
-        result = bpe_encoder->Encode(text.str());
+        result.copy_from(bpe_encoder->Encode(text.str()));
         return true;
     }
   };
