@@ -23,7 +23,7 @@ struct bpe_tokenize {
     VELOX_DEFINE_FUNCTION_TYPES(T);
 
     FOLLY_ALWAYS_INLINE bool call(
-    ArrayWriter<int64_t>& result, 
+    velox::exec::ArrayWriter<int64_t>& result, 
     const arg_type<std::shared_ptr<GPT2BPEEncoder>>& bpe_encoder, 
     const arg_type<velox::Varchar>& text
   ) {
