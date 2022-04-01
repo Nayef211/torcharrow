@@ -27,6 +27,10 @@
 #include "velox/vector/TypeAliases.h"
 #include "velox/vector/arrow/Bridge.h"
 
+#include "functions/text/gpt2_bpe_tokenizer.h" // @manual
+#include <torch/csrc/utils/pybind.h> // @manual
+
+
 #define STRINGIFY(x) #x
 #define MACRO_STRINGIFY(x) STRINGIFY(x)
 
@@ -781,6 +785,55 @@ void declareRowType(py::module& m) {
       });
 }
 
+// GPT2BPE Opaque Converter
+
+using OpaqueToPythonFunc = std::function<py::object(const velox::variant& v)>;
+// should return variant holding opaque type on successful resolution or NULL
+// variant if the next resolution callback should be tried
+using PythonToOpaqueFunc = std::function<velox::variant(py::handle)>;
+
+struct Registry {
+  std::unordered_map<std::type_index, OpaqueToPythonFunc> toPythonFuncs;
+  std::unordered_map<std::type_index, PythonToOpaqueFunc> fromPythonFuncs;
+  std::vector<PythonToOpaqueFunc> fromPythonFuncList;
+  static Registry& get() {
+    static Registry instance;
+    return instance;
+  }
+};
+
+void registerOpaqueConverter(
+    const std::shared_ptr<const velox::OpaqueType>& type,
+    OpaqueToPythonFunc toPython,
+    PythonToOpaqueFunc fromPython) {
+  Registry& registry = Registry::get();
+  const auto& index = type->typeIndex();
+  if (toPython) {
+    registry.toPythonFuncs[index] = toPython;
+  }
+  if (fromPython) {
+    registry.fromPythonFuncs[index] = fromPython;
+    registry.fromPythonFuncList.push_back(fromPython);
+  }
+}
+
+py::object opaque2py(const velox::variant& v) {
+  return py::cast(*v.opaque<functions::GPT2BPEEncoder>());
+}
+
+velox::variant py2opaque(py::handle obj) {
+  if (!py::isinstance<functions::GPT2BPEEncoder>(obj)) {
+    return {};
+  }
+  return velox::variant::opaque<functions::GPT2BPEEncoder>(
+      py::cast<std::shared_ptr<functions::GPT2BPEEncoder>>(obj));
+}
+
+void registerGPT2BPEEncoderOpaqueConverter() {
+    registerOpaqueConverter(
+        velox::OPAQUE<functions::GPT2BPEEncoder>(), opaque2py, py2opaque);
+}
+
 PYBIND11_MODULE(_torcharrow, m) {
   m.doc() = R"pbdoc(
         TorchArrow native code module
@@ -917,6 +970,34 @@ PYBIND11_MODULE(_torcharrow, m) {
 #else
   m.attr("__version__") = "dev";
 #endif
+
+// text operator
+  m.def("register", &registerGPT2BPEEncoderOpaqueConverter);
+  py::class_<functions::GPT2BPEEncoder, c10::intrusive_ptr<functions::GPT2BPEEncoder>>(
+      m, "GPT2BPEEncoder")
+      .def(py::init<
+           std::unordered_map<std::string, int64_t>,
+           std::unordered_map<std::string, int64_t>,
+           std::string,
+           std::unordered_map<int64_t, std::string>,
+           bool>())
+      .def_property_readonly("bpe_encoder_", &functions::GPT2BPEEncoder::GetBPEEncoder)
+      .def_property_readonly(
+          "bpe_merge_ranks_", &functions::GPT2BPEEncoder::GetBPEMergeRanks)
+      .def_readonly("seperator_", &functions::GPT2BPEEncoder::seperator_)
+      .def_property_readonly("byte_encoder_", &functions::GPT2BPEEncoder::GetByteEncoder)
+      .def("encode", &functions::GPT2BPEEncoder::Encode)
+      .def(py::pickle(
+          // __getstate__
+          [](const c10::intrusive_ptr<functions::GPT2BPEEncoder>& self)
+              -> functions::GPT2BPEEncoderStatesPybind {
+            return functions::_serialize_gpt2_bpe_encoder_pybind(self);
+          },
+          // __setstate__
+          [](functions::GPT2BPEEncoderStatesPybind states)
+              -> c10::intrusive_ptr<functions::GPT2BPEEncoder> {
+            return functions::_deserialize_gpt2_bpe_encoder_pybind(states);
+          }));
 }
 
 } // namespace facebook::torcharrow
