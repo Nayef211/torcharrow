@@ -624,10 +624,10 @@ velox::variant pyToVariant(const pybind11::handle& obj) {
     return out;
   }
 
+  // handle GPT2BPEEncoder opaque type
   if (py::isinstance<functions::GPT2BPEEncoder>(obj)) {
-    out = velox::variant::opaque(
+    return velox::variant::opaque(
         obj.cast<std::shared_ptr<functions::GPT2BPEEncoder>>());
-    return true;
   }
 
   // Recursively allocate lists
