@@ -22,6 +22,7 @@
 #include "velox/type/Type.h"
 #include "velox/vector/BaseVector.h"
 #include "velox/vector/ComplexVector.h"
+#include "functions/text/gpt2_bpe_tokenizer.h" // @manual
 
 namespace py = pybind11;
 
@@ -621,6 +622,12 @@ velox::variant pyToVariant(const pybind11::handle& obj) {
   velox::variant out;
   if (userDefinedPyToOpaque(obj, out)) {
     return out;
+  }
+
+  if (py::isinstance<functions::GPT2BPEEncoder>(obj)) {
+    out = velox::variant::opaque(
+        obj.cast<std::shared_ptr<functions::GPT2BPEEncoder>>());
+    return true;
   }
 
   // Recursively allocate lists

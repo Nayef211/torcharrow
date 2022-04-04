@@ -785,55 +785,6 @@ void declareRowType(py::module& m) {
       });
 }
 
-// GPT2BPE Opaque Converter
-
-using OpaqueToPythonFunc = std::function<py::object(const velox::variant& v)>;
-// should return variant holding opaque type on successful resolution or NULL
-// variant if the next resolution callback should be tried
-using PythonToOpaqueFunc = std::function<velox::variant(py::handle)>;
-
-struct Registry {
-  std::unordered_map<std::type_index, OpaqueToPythonFunc> toPythonFuncs;
-  std::unordered_map<std::type_index, PythonToOpaqueFunc> fromPythonFuncs;
-  std::vector<PythonToOpaqueFunc> fromPythonFuncList;
-  static Registry& get() {
-    static Registry instance;
-    return instance;
-  }
-};
-
-void registerOpaqueConverter(
-    const std::shared_ptr<const velox::OpaqueType>& type,
-    OpaqueToPythonFunc toPython,
-    PythonToOpaqueFunc fromPython) {
-  Registry& registry = Registry::get();
-  const auto& index = type->typeIndex();
-  if (toPython) {
-    registry.toPythonFuncs[index] = toPython;
-  }
-  if (fromPython) {
-    registry.fromPythonFuncs[index] = fromPython;
-    registry.fromPythonFuncList.push_back(fromPython);
-  }
-}
-
-py::object opaque2py(const velox::variant& v) {
-  return py::cast(*v.opaque<functions::GPT2BPEEncoder>());
-}
-
-velox::variant py2opaque(py::handle obj) {
-  if (!py::isinstance<functions::GPT2BPEEncoder>(obj)) {
-    return {};
-  }
-  return velox::variant::opaque<functions::GPT2BPEEncoder>(
-      py::cast<std::shared_ptr<functions::GPT2BPEEncoder>>(obj));
-}
-
-void registerGPT2BPEEncoderOpaqueConverter() {
-    registerOpaqueConverter(
-        velox::OPAQUE<functions::GPT2BPEEncoder>(), opaque2py, py2opaque);
-}
-
 PYBIND11_MODULE(_torcharrow, m) {
   m.doc() = R"pbdoc(
         TorchArrow native code module
@@ -972,7 +923,6 @@ PYBIND11_MODULE(_torcharrow, m) {
 #endif
 
 // text operator
-  m.def("register", &registerGPT2BPEEncoderOpaqueConverter);
   py::class_<functions::GPT2BPEEncoder, c10::intrusive_ptr<functions::GPT2BPEEncoder>>(
       m, "GPT2BPEEncoder")
       .def(py::init<
