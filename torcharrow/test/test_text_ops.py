@@ -19,9 +19,11 @@ from torcharrow import functional
 
 _ASSET_DIR = (Path(__file__).parent / "asset").resolve()
 
+
 def get_asset_path(*path_components):
     """Get the path to the file under `test/assets` directory."""
     return str(_ASSET_DIR.joinpath(*path_components))
+
 
 @lru_cache()
 def bytes_to_unicode():
@@ -36,16 +38,21 @@ def bytes_to_unicode():
     To avoid that, we want lookup tables between utf-8 bytes and unicode strings.
     And avoids mapping to whitespace/control characters the bpe code barfs on.
     """
-    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
+    )
     cs = bs[:]
     n = 0
-    for b in range(2 ** 8):
+    for b in range(2**8):
         if b not in bs:
             bs.append(b)
-            cs.append(2 ** 8 + n)
+            cs.append(2**8 + n)
             n += 1
     cs = [chr(n) for n in cs]
     return dict(zip(bs, cs))
+
 
 # copied from GPT2BPETokenizer __init__ method
 def init_bpe_encoder():
@@ -60,10 +67,13 @@ def init_bpe_encoder():
     with open(vocab_bpe_path, "r", encoding="utf-8") as f:
         bpe_vocab = f.read()
     bpe_merge_ranks = {
-        _seperator.join(merge_pair.split()): i for i, merge_pair in enumerate(bpe_vocab.split("\n")[1:-1])
+        _seperator.join(merge_pair.split()): i
+        for i, merge_pair in enumerate(bpe_vocab.split("\n")[1:-1])
     }
     # Caching is enabled in Eager mode
-    bpe = _ta.GPT2BPEEncoder(bpe_encoder, bpe_merge_ranks, _seperator, T.bytes_to_unicode(), True)
+    bpe = _ta.GPT2BPEEncoder(
+        bpe_encoder, bpe_merge_ranks, _seperator, T.bytes_to_unicode(), True
+    )
     return bpe
 
 
@@ -77,7 +87,10 @@ class _TestFunctionalBase(unittest.TestCase):
             {
                 "text": ["Hello World!, how are you?", "Respublica superiorem"],
                 "labels": [0, 1],
-                "tokens": [[15496, 2159, 28265, 703, 389, 345, 30], [4965, 11377, 64, 2208, 72, 29625]],
+                "tokens": [
+                    [15496, 2159, 28265, 703, 389, 345, 30],
+                    [4965, 11377, 64, 2208, 72, 29625],
+                ],
             },
             dtype=dt.Struct(
                 fields=[
