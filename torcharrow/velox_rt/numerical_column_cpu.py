@@ -6,12 +6,10 @@
 
 import math
 import operator
-from typing import Callable, Dict, List, Optional, Sequence, Union
+from typing import Callable, Dict, List, Optional, Sequence, Union, Any
 
 import numpy as np
 import torcharrow as ta
-
-# pyre-fixme[21]: Could not find module `torcharrow._torcharrow`.
 import torcharrow._torcharrow as velox
 import torcharrow.dtypes as dt
 import torcharrow.pytorch as pytorch
@@ -21,6 +19,7 @@ from torcharrow.expression import expression
 from torcharrow.icolumn import Column
 from torcharrow.inumerical_column import NumericalColumn
 from torcharrow.trace import trace, traceproperty
+from torcharrow.velox_rt.dataframe_cpu import DataFrameCpu
 
 from .column import ColumnCpuMixin
 from .typing import get_velox_type
@@ -50,7 +49,6 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
     def _from_pysequence(
         device: str, data: Sequence[Union[int, float, bool]], dtype: dt.DType
     ):
-        # pyre-fixme[16]: Module `torcharrow` has no attribute `_torcharrow`.
         velox_column = velox.Column(get_velox_type(dtype), data)
         return ColumnCpuMixin._from_velox(
             device,
@@ -73,7 +71,6 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
         # pyre-fixme[16]: `Array` has no attribute `_export_to_c`.
         array._export_to_c(ptr_array, ptr_schema)
 
-        # pyre-fixme[16]: Module `torcharrow` has no attribute `_torcharrow`.
         velox_column = velox._import_from_arrow(
             get_velox_type(dtype), ptr_array, ptr_schema
         )
@@ -184,7 +181,6 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
                 res.append(self._getdata(i))
         res.sort(reverse=not ascending)
 
-        # pyre-fixme[16]: Module `torcharrow` has no attribute `_torcharrow`.
         col = velox.Column(get_velox_type(self.dtype))
         if na_position == "first":
             for i in range(none_count):
@@ -296,18 +292,34 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
 
         return self._checked_binary_op_call(other, op_name)
 
-    @trace
-    @expression
-    def __add__(self, other: Union[NumericalColumn, int, float]) -> NumericalColumn:
-        # pyre-fixme[6]: For 1st param expected `Union[bool, float, int]` but got
-        #  `Union[NumericalColumn, float, int]`.
-        return self._checked_arithmetic_op_call(other, "add", operator.add)
+    def _checked_arithmetic_op_call_with_df(
+        self,
+        other: Any,
+        op_name: str,
+        fallback_py_op: Callable,
+        inverse_operation_name: str,
+    ) -> Union[NumericalColumn, DataFrameCpu]:
+        if isinstance(other, DataFrameCpu):
+            return getattr(other, inverse_operation_name)(self)
+
+        return self._checked_arithmetic_op_call(other, op_name, fallback_py_op)
 
     @trace
     @expression
-    def __radd__(self, other: Union[int, float]) -> NumericalColumn:
-        return self._checked_arithmetic_op_call(
-            other, "radd", Column._swap(operator.add)
+    def __add__(
+        self, other: Union[DataFrameCpu, NumericalColumn, int, float]
+    ) -> Union[NumericalColumn, DataFrameCpu]:
+        return self._checked_arithmetic_op_call_with_df(
+            other, "add", operator.add, "__radd__"
+        )
+
+    @trace
+    @expression
+    def __radd__(
+        self, other: Union[DataFrameCpu, int, float]
+    ) -> Union[NumericalColumn, DataFrameCpu]:
+        return self._checked_arithmetic_op_call_with_df(
+            other, "radd", Column._swap(operator.add), "__add__"
         )
 
     @trace
@@ -600,24 +612,14 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
     @trace
     @expression
     def fill_null(self, fill_value: Union[dt.ScalarTypes, Dict]):
-        self._prototype_support_warning("fill_null")
-
         if not isinstance(fill_value, Column._scalar_types):
             raise TypeError(f"fill_null with {type(fill_value)} is not supported")
         if not self.is_nullable:
             return self
-        else:
-            # pyre-fixme[16]: Module `torcharrow` has no attribute `_torcharrow`.
-            col = velox.Column(get_velox_type(self.dtype))
-            for i in range(len(self)):
-                if self._getmask(i):
-                    if isinstance(fill_value, Dict):
-                        raise NotImplementedError()
-                    else:
-                        col.append(fill_value)
-                else:
-                    col.append(self._getdata(i))
-            return ColumnCpuMixin._from_velox(self.device, self.dtype, col, True)
+
+        # functional doesn't support type promotion yet. Cast to column dtype manually (represented by numpy literal)
+        fill_value_casted = dt.np_typeof_dtype(self.dtype)(fill_value)
+        return functional.coalesce(self, fill_value_casted)._with_null(False)
 
     @trace
     @expression
@@ -646,7 +648,6 @@ class NumericalColumnCpu(ColumnCpuMixin, NumericalColumn):
         if subset is not None:
             raise TypeError(f"subset parameter for numerical columns not supported")
         seen = set()
-        # pyre-fixme[16]: Module `torcharrow` has no attribute `_torcharrow`.
         col = velox.Column(get_velox_type(self.dtype))
         for i in range(len(self)):
             if self._getmask(i):

@@ -38,8 +38,6 @@ inline void registerTorchArrowFunctions() {
       {"torcharrow_istitle"});
   velox::registerFunction<torcharrow_isnumeric, bool, velox::Varchar>(
       {"torcharrow_isnumeric"});
-  velox::registerFunction<torcharrow_isprintable, bool, velox::Varchar>(
-      {"torcharrow_isprintable"});
 
   // Natural logarithm
   velox::registerFunction<torcharrow_log, float, float>({"torcharrow_log"});
@@ -178,7 +176,6 @@ inline void registerTorchArrowFunctions() {
       {"bucketize"});
   velox::registerFunction<bucketize, int32_t, int64_t, velox::Array<int64_t>>(
       {"bucketize"});
-
 
   // List input
   velox::registerFunction<
